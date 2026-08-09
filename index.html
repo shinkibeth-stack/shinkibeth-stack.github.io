@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ドラクエ10 鍛冶 計算補助ツール</title>
+<style>
+  :root{
+    --bg:#17120e;
+    --panel:#221a14;
+    --panel2:#2b211a;
+    --line:#3a2c22;
+    --text:#f2e8dc;
+    --muted:#a8998a;
+    --heat:#ff7a2e;
+    --heat-dim:#8a6b52;
+    --green:#42dd88;
+    --green-bg:rgba(66,221,136,.12);
+    --green-line:rgba(66,221,136,.5);
+    --red:#ff5d52;
+    --red-bg:rgba(255,93,82,.12);
+    --red-line:rgba(255,93,82,.5);
+    --radius:10px;
+    --mono:"SF Mono","Menlo","Consolas","Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP","Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    line-height:1.5;
+    padding:20px 16px 60px;
+  }
+  .wrap{max-width:900px;margin:0 auto}
+  h1{font-size:18px;font-weight:700;letter-spacing:.02em;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:12px;margin:0 0 18px}
+
+  /* ---- temperature header (compact single row) ---- */
+  .heat-panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:9px 14px;
+    margin-bottom:10px;
+  }
+  .heat-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .heat-label{font-size:11px;color:var(--muted);letter-spacing:.08em}
+  .heat-num{display:inline-flex;align-items:baseline;white-space:nowrap}
+  .heat-val{
+    font-family:var(--mono);
+    font-size:30px;
+    font-weight:700;
+    line-height:1;
+    font-variant-numeric:tabular-nums;
+  }
+  .heat-unit{font-size:15px;font-weight:600;margin-left:1px}
+  .heat-bar{
+    flex:1 1 110px;min-width:80px;
+    height:6px;border-radius:3px;background:#0e0a07;
+    overflow:hidden;border:1px solid var(--line);
+  }
+  .heat-fill{height:100%;transition:width .25s ease,background .25s ease}
+  .heat-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .heat-controls input{width:84px}
+  .hint{color:var(--muted);font-size:11px}
+
+  /* ---- selectors ---- */
+  .selectors{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .selectors label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);flex:1;min-width:150px}
+
+  /* ---- two-column working area (wide screens) ---- */
+  .main{display:flex;flex-direction:column;gap:12px}
+  .col-left,.col-right{min-width:0}
+  @media(min-width:840px){
+    .main{display:grid;grid-template-columns:minmax(0,1fr) 336px;align-items:start;gap:14px}
+  }
+  select,input,button,textarea{font-family:inherit}
+  select,input[type="number"],input[type="text"],textarea{
+    background:var(--panel2);color:var(--text);
+    border:1px solid var(--line);border-radius:8px;
+    padding:8px 10px;font-size:14px;
+  }
+  textarea{width:100%;resize:vertical;font-family:var(--mono);font-size:12px}
+  select:focus,input:focus,textarea:focus,button:focus-visible{
+    outline:2px solid var(--heat);outline-offset:1px;
+  }
+
+  /* ---- buttons ---- */
+  button{
+    cursor:pointer;border:1px solid var(--line);border-radius:8px;
+    background:var(--panel2);color:var(--text);padding:9px 14px;
+    font-size:14px;font-weight:600;transition:filter .1s,background .1s;
+  }
+  button:hover{filter:brightness(1.15)}
+  button:active{filter:brightness(.95)}
+  .btn-primary{background:linear-gradient(180deg,#ff8a3d,#f2621c);border-color:#ff8a3d;color:#1a0f07}
+  .btn-heat{background:linear-gradient(180deg,#5aa0ff,#3572d6);border-color:#5aa0ff;color:#08101f}
+  .btn-ghost{background:transparent}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+
+  /* ---- grid ---- */
+  .grid-wrap{
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);padding:16px;
+  }
+  .grid{display:grid;gap:8px}
+  .placeholder{color:var(--muted);text-align:center;padding:34px 10px;font-size:14px}
+  .cell{
+    background:var(--panel2);border:1px solid var(--line);
+    border-radius:9px;padding:9px 11px;position:relative;
+  }
+  .cell.st-in{border-color:var(--green-line);background:var(--green-bg)}
+  .cell.st-over{border-color:var(--red-line);background:var(--red-bg)}
+  .cell-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .cell-num{font-size:11px;color:var(--muted);letter-spacing:.06em}
+  .cell-range{font-family:var(--mono);font-size:13px;color:var(--text);font-variant-numeric:tabular-nums}
+  .cell-center{font-size:10px;color:var(--muted);margin-left:6px}
+  .cell-sum{font-family:var(--mono);font-size:25px;font-weight:700;line-height:1.1;margin:3px 0 2px;font-variant-numeric:tabular-nums}
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-bottom:6px}
+  .badge.in{background:var(--green);color:#08160d}
+  .badge.over{background:var(--red);color:#1a0605}
+  .badge.under{background:#3a2c22;color:var(--muted)}
+  .cell-dist{display:flex;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:8px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+  .cell-dist b{color:var(--text);font-weight:700}
+  .cell-input{width:100%}
+
+  /* ---- candidates ---- */
+  .cand-panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-top:0}
+  .cand-title{font-size:13px;font-weight:700;margin-bottom:10px;display:flex;align-items:baseline;gap:8px}
+  .cand-title .t{color:var(--heat);font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .cand-note{color:var(--muted);font-size:11px;font-weight:400}
+  .cand-row{display:flex;gap:10px;padding:5px 0;border-bottom:1px dashed var(--line)}
+  .cand-row:last-child{border-bottom:none}
+  .cand-label{width:74px;flex:none;font-size:12px;color:var(--muted)}
+  .cand-vals{font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+  .cand-sub{display:flex;flex-direction:column;gap:10px;margin-top:12px;opacity:.62}
+  .cand-sub .col{min-width:0}
+  .cand-sub h4{font-size:11px;color:var(--muted);margin:0 0 4px;font-weight:600}
+  .cand-sub .cand-row{padding:2px 0}
+  .cand-sub .cand-label{width:56px;font-size:11px}
+  .cand-sub .cand-vals{font-size:12px}
+
+  /* ---- data mgmt ---- */
+  details.data{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius)}
+  details.data>summary{cursor:pointer;padding:12px 16px;font-size:13px;font-weight:600;user-select:none}
+  details.data>summary::marker{color:var(--muted)}
+  .data-body{padding:0 16px 16px}
+  .data-sect{border-top:1px solid var(--line);padding-top:14px;margin-top:14px}
+  .data-sect h3{font-size:12px;margin:0 0 10px;color:var(--muted);letter-spacing:.04em;font-weight:700}
+  .form-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+  .form-row label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted)}
+  .pairs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:10px}
+  .pair{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--muted)}
+  .pair input{width:62px}
+  .plist{display:flex;flex-direction:column;gap:6px}
+  .pitem{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:13px}
+  .pitem .meta{color:var(--muted);font-size:11px}
+  .pitem .ops{display:flex;gap:6px}
+  .pitem button{padding:4px 10px;font-size:12px}
+  .code-note{font-size:11px;color:var(--muted);margin:0 0 6px;font-family:var(--mono)}
+  .msg{font-size:12px;margin-top:6px;min-height:16px}
+  .msg.ok{color:var(--green)}
+  .msg.err{color:var(--red)}
+
+  @media(prefers-reduced-motion:reduce){
+    *,*::before,*::after{transition:none!important;animation:none!important}
+  }
+
+  /* ---- 解説・フッター ---- */
+  .content{margin-top:22px}
+  .content article{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-top:14px}
+  .content h2{font-size:16px;margin:0 0 12px;letter-spacing:.02em}
+  .content h3{font-size:13px;margin:18px 0 6px;color:var(--heat)}
+  .content p{margin:0 0 10px;font-size:14px}
+  .content ol,.content ul{margin:0 0 10px;padding-left:1.3em;font-size:14px}
+  .content li{margin:4px 0}
+  .content strong{color:var(--text);font-weight:700}
+  .content .formula{font-family:var(--mono);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px;overflow-x:auto;margin:0 0 10px}
+  .content table.tech{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0 10px}
+  .content table.tech th,.content table.tech td{border:1px solid var(--line);padding:6px 10px;text-align:left}
+  .content table.tech th{color:var(--muted);font-weight:600;font-size:12px}
+  .ad-slot{margin:16px 0}
+  footer.site{margin-top:26px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;line-height:1.7}
+  footer.site a{color:var(--muted);text-decoration:underline}
+  footer.site .links{margin-bottom:6px}
+  footer.site .links a{margin-right:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 style="margin-bottom:10px">ドラクエ10 鍛冶 計算補助 <span style="font-size:11px;font-weight:400;color:var(--muted)">v1.0</span></h1>
+
+  <!-- 温度（コンパクト1行） -->
+  <div class="heat-panel">
+    <div class="heat-row">
+      <span class="heat-label">温度</span>
+      <span class="heat-num"><span class="heat-val" id="tempVal">1000</span><span class="heat-unit">℃</span></span>
+      <div class="heat-bar"><div class="heat-fill" id="heatFill"></div></div>
+      <div class="heat-controls">
+        <span class="hint">手動</span>
+        <input type="number" id="tempInput" step="50" placeholder="1000">
+        <button class="btn-ghost" id="setTempBtn">設定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 選択 -->
+  <div class="selectors">
+    <label>カテゴリ<select id="catSel"></select></label>
+    <label>商材<select id="prodSel"></select></label>
+  </div>
+
+  <!-- 作業エリア：広い画面では 左=マス目 / 右=出る候補 の2カラム -->
+  <div class="main">
+    <div class="col-left">
+      <div class="grid-wrap">
+        <div class="grid" id="grid">
+          <div class="placeholder">カテゴリと商材を選ぶと、マス目が表示されます。</div>
+        </div>
+        <div class="actions" id="actions" style="display:none">
+          <button class="btn-primary" id="calcBtn">計算する（−50℃）</button>
+          <button class="btn-heat" id="oroshiBtn">熱風おろし（−150℃）</button>
+          <button class="btn-ghost" id="undoBtn">1手戻す</button>
+          <button class="btn-ghost" id="resetBtn">リセット</button>
+        </div>
+      </div>
+    </div>
+    <div class="col-right">
+      <div class="cand-panel" id="candPanel" style="display:none">
+        <div class="cand-title">出る候補 <span class="t" id="candTemp"></span>
+          <span class="cand-note">会心で ×2</span>
+        </div>
+        <div id="candMain"></div>
+        <div class="cand-sub" id="candSub"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- データ管理 -->
+  <details class="data">
+    <summary>データ管理（商材の登録・編集）</summary>
+    <div class="data-body">
+      <p class="hint" id="storeHint" style="margin:10px 0 0"></p>
+
+      <div class="data-sect" style="border-top:none;padding-top:6px;margin-top:6px">
+        <h3 id="formTitle">商材を追加</h3>
+        <div class="form-row">
+          <label>カテゴリ
+            <input type="text" id="fCat" list="catList" placeholder="鍛冶ハンマー">
+            <datalist id="catList"></datalist>
+          </label>
+          <label>商材名
+            <input type="text" id="fName" placeholder="光の鍛冶ハンマー">
+          </label>
+          <label>マス数
+            <select id="fCount">
+              <option>2</option><option>3</option><option>4</option>
+              <option selected>5</option><option>6</option><option>7</option><option>8</option>
+            </select>
+          </label>
+        </div>
+        <div class="pairs" id="fPairs"></div>
+        <button class="btn-primary" id="saveBtn">保存</button>
+        <button class="btn-ghost" id="cancelEditBtn" style="display:none">編集をやめる</button>
+        <div class="msg" id="formMsg"></div>
+      </div>
+
+      <div class="data-sect">
+        <h3>登録済みの商材</h3>
+        <div class="plist" id="plist"></div>
+      </div>
+
+      <div class="data-sect">
+        <h3>一括データ（JSON） — コピーで書き出し / 貼り付け＋反映で読み込み</h3>
+        <textarea id="jsonArea" rows="7"></textarea>
+        <div style="margin-top:8px"><button class="btn-ghost" id="jsonApplyBtn">この内容を反映</button></div>
+        <div class="msg" id="jsonMsg"></div>
+      </div>
+
+      <div class="data-sect">
+        <h3>CSV取り込み（追加）</h3>
+        <p class="code-note">形式： カテゴリ,商材名,枠1下限,枠1上限,枠2下限,枠2上限, …（1行1商材）<br>例： 鍛冶ハンマー,光の鍛冶ハンマー,120,126,180,186,236,245,140,148,160,170</p>
+        <textarea id="csvArea" rows="4" placeholder="カテゴリ,商材名,下限,上限,下限,上限,..."></textarea>
+        <div style="margin-top:8px"><button class="btn-ghost" id="csvBtn">取り込む</button></div>
+        <div class="msg" id="csvMsg"></div>
+      </div>
+
+    </div>
+  </details>
+
+  <div class="content">
+    <!-- 広告スロット: AdSense審査通過後、この位置に発行された広告コードを貼ってください -->
+    <div class="ad-slot"><!-- <ins class="adsbygoogle" ...></ins> --></div>
+
+    <article>
+      <h2>使い方</h2>
+      <ol>
+        <li>上のカテゴリと商材を選ぶと、その商材のマス目と各枠（目標範囲）が表示されます。</li>
+        <li>ゲーム内で「たたく」などの動作を行い、出た数値を対応するマスの「今回の値」欄に入力します。複数のマスを同時に叩く技なら、叩いた各マスに入力します。</li>
+        <li><strong>計算する</strong>を押すと、入力した値が各マスの現在値に加算され、温度が50℃下がります。熱風おろしを使ったときは<strong>熱風おろし</strong>ボタンで150℃下げます。</li>
+        <li>各マスには、枠の<strong>左端・中央・右端まであといくつ</strong>かが表示されます。中央に近いほど大成功しやすく、上限を超えるとそのマスは失敗（「◯超過」と赤表示）になります。</li>
+        <li>今の温度で出る可能性のある数値が、叩き方別（等倍・0.5倍・2.5倍・3倍）に表示されます。50℃下・100℃下の候補も確認できるので、次にどの技で叩くかの判断に使えます。</li>
+        <li>入力を間違えたら<strong>1手戻す</strong>、別の地金を打ち直すときは<strong>リセット</strong>。温度は上部の欄から手動でも設定できます（火力上げなどを使ったとき用）。</li>
+      </ol>
+      <p>登録した商材データは、お使いのブラウザ内に自動保存されます（サーバーには送信されません）。「データ管理」から商材の追加・編集や、JSON／CSVでのまとめて登録・バックアップができます。</p>
+    </article>
+
+    <article>
+      <h2>鍛冶の基本と数値の仕組み</h2>
+      <p>鍛冶は、商材ごとに決められた複数のマスを叩き、各マスの数値を目標の枠（緑ゲージ）内に収めるミニゲームです。枠の中央に近づけるほど大成功の確率が上がり、上限を超えるとそのマスは失敗になります。</p>
+
+      <h3>温度と数値の関係</h3>
+      <p>地金の温度は最初1000℃で、叩くたびに下がっていきます。温度が高いほど1回の叩きで増える数値が大きく、低いほど小さくなります。序盤は高温で大きく寄せ、枠が近づいたら温度を下げたり弱い叩き方に切り替えて少しずつ微調整する、というのが基本の流れです。</p>
+
+      <h3>出る数値の計算式</h3>
+      <p>1回の叩きで出る数値は、温度と叩き方の倍率から次の式で決まります（記号は切り上げ）。</p>
+      <div class="formula">出る数値 = ⌈ (0.5 + 0.0005 × 温度) × ⌈ 基準値 × 倍率 ⌉ ⌉</div>
+      <p>基準値は12〜18の7種類で、そこに叩き方ごとの倍率をかけます。1000℃・通常の「たたく」なら12〜18がそのまま出ます。会心が出たときは、最後にさらに2倍になります。</p>
+
+      <h3>主な叩き方の倍率</h3>
+      <table class="tech">
+        <tr><th>叩き方</th><th>倍率</th></tr>
+        <tr><td>てかげん打ち</td><td>0.5</td></tr>
+        <tr><td>通常たたく</td><td>1</td></tr>
+        <tr><td>上下打ち／ななめ打ち／4連打ち</td><td>1.2</td></tr>
+        <tr><td>2倍打ち／超4連打ち</td><td>2</td></tr>
+        <tr><td>熱風おろし</td><td>2.5</td></tr>
+        <tr><td>3倍打ち</td><td>3</td></tr>
+      </table>
+      <p>このツールでは、0.5倍・等倍・1.2倍・2倍・2.5倍・3倍の候補を表示しています。</p>
+
+      <h3>失敗を減らすコツ</h3>
+      <ul>
+        <li>枠の手前までは大きめの叩きで一気に寄せ、最後は小さい叩きで中央を狙う。</li>
+        <li>今の温度で「出る候補」の最大値を見て、枠の上限を超えそうなら弱い叩き方や温度を下げてから叩く。</li>
+        <li>50℃下・100℃下の候補も見ておくと、次の一手で行き過ぎないか事前に判断できる。</li>
+      </ul>
+      <p>※掲載の数値は有志による解析に基づく目安です。ゲームのバージョンによって挙動が変わる場合があるので、実際の数値と照らし合わせてご利用ください。</p>
+    </article>
+
+    <div class="ad-slot"><!-- 広告スロット（任意）: 記事下にもう1枠置く場合はここに --></div>
+  </div>
+
+  <footer class="site">
+    <div class="links">
+      <a href="about.html">運営者情報</a>
+      <a href="privacy.html">プライバシーポリシー</a>
+    </div>
+    <p>当サイトは「ドラゴンクエストX」を題材とした非公式のファンツールです。運営はスクウェア・エニックスおよび公式サービスとは一切関係ありません。ゲームタイトル等の権利は各権利者に帰属します。© SQUARE ENIX</p>
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+/* ===== 数値計算 =====
+   出る数値 = ceil( (0.5 + 0.0005*T) * ceil(n*y) )
+   T: 温度(2000で上限, 0で下限),  n: 12〜18,  y: 叩き方の倍率
+   （会心は最後に ×2）参考: 公式ガイドブック一覧表と一致する式 */
+function possibleValues(T, y){
+  const x = Math.min(Math.max(T, 0), 2000);
+  const factor = 0.5 + 0.0005 * x;
+  const set = new Set();
+  for(let n = 12; n <= 18; n++){
+    set.add(Math.ceil(factor * Math.ceil(n * y)));
+  }
+  return [...set].sort((a,b)=>a-b);
+}
+const TECHS = [
+  {label:"0.5倍",  y:0.5},
+  {label:"等倍",   y:1},
+  {label:"1.2倍",  y:1.2},
+  {label:"2倍",    y:2},
+  {label:"2.5倍",  y:2.5},
+  {label:"3倍",    y:3},
+];
+
+/* ===== 初期データ =====
+   光の鍛冶ハンマー = 実データ。「(レイアウト確認用)」= 動作確認用の仮データ。不要なら削除可 */
+const SEED = [
+  {category:"鍛冶ハンマー", name:"光の鍛冶ハンマー",
+   cells:[[120,126],[180,186],[236,245],[140,148],[160,170]]},
+  {category:"(レイアウト確認用)", name:"サンプル2マス", cells:[[100,108],[150,158]]},
+  {category:"(レイアウト確認用)", name:"サンプル3マス", cells:[[80,88],[120,128],[200,210]]},
+  {category:"(レイアウト確認用)", name:"サンプル4マス", cells:[[100,106],[110,116],[120,126],[130,136]]},
+  {category:"(レイアウト確認用)", name:"サンプル6マス", cells:[[100,106],[110,116],[120,126],[130,136],[140,146],[150,156]]},
+  {category:"(レイアウト確認用)", name:"サンプル7マス", cells:[[100,106],[110,116],[120,126],[130,136],[140,146],[150,156],[160,166]]},
+  {category:"(レイアウト確認用)", name:"サンプル8マス", cells:[[100,106],[110,116],[120,126],[130,136],[140,146],[150,156],[160,166],[170,176]]},
+];
+function normalize(list){
+  return list.map(p=>({
+    category:String(p.category||"").trim(),
+    name:String(p.name||"").trim(),
+    cells:(p.cells||[]).map(c=>Array.isArray(c)?[Number(c[0]),Number(c[1])]:[Number(c.min),Number(c.max)])
+  }));
+}
+
+/* ===== 永続化（仕様書 7-5） =====
+   優先順: window.storage(claude.aiプレビュー) → localStorage(ローカルHTML)。
+   どちらも使えない環境ではメモリのみ（JSON欄で書き出し/読み込み）。 */
+const STORE_KEY = "dq10-kaji-products";
+let storeMode = "none"; // "artifact" | "local" | "none"
+
+async function loadStored(){
+  // 戻り値: 保存済みの商材配列 / 保存なし・読めない場合は null
+  if(window.storage && typeof window.storage.get === "function"){
+    storeMode = "artifact";
+    try{
+      const r = await window.storage.get(STORE_KEY);
+      if(r && r.value) return JSON.parse(r.value);
+    }catch(e){ /* キー未作成・破損時はシードを使う */ }
+    return null;
+  }
+  try{
+    const t = "__dq10_kaji_test__";
+    localStorage.setItem(t, "1"); localStorage.removeItem(t);
+    storeMode = "local";
+  }catch(e){ storeMode = "none"; return null; }
+  try{
+    const s = localStorage.getItem(STORE_KEY);
+    return s ? JSON.parse(s) : null;
+  }catch(e){ return null; }
+}
+
+function persist(){
+  // 商材データが変わるたびに呼ぶ（失敗しても画面動作は継続）
+  const payload = JSON.stringify(products.map(p=>({category:p.category,name:p.name,cells:p.cells})));
+  if(storeMode === "artifact"){
+    window.storage.set(STORE_KEY, payload).catch(()=>{});
+  }else if(storeMode === "local"){
+    try{ localStorage.setItem(STORE_KEY, payload); }catch(e){}
+  }
+}
+
+/* ===== 状態 ===== */
+let products = normalize(SEED);
+let selected = null;      // 選択中の商材オブジェクト
+let sums = [];            // 各マスの現在値
+let temp = 1000;
+let history = [];         // undo用スナップショット
+let editIndex = -1;       // データ編集中のindex(-1で新規)
+
+/* ===== ユーティリティ ===== */
+const $ = id => document.getElementById(id);
+function clampTemp(t){ return Math.max(0, Math.round(t)); }
+function fmt(n){
+  n = Math.round(n*10)/10;
+  const sign = n > 0 ? "+" : "";
+  return sign + (Number.isInteger(n) ? n : n.toFixed(1));
+}
+function contiguous(v){ return v.length>1 && (v[v.length-1]-v[0]+1===v.length); }
+function valsDisp(v){ return contiguous(v) ? `${v[0]}–${v[v.length-1]}` : v.join(", "); }
+function categories(){ return [...new Set(products.map(p=>p.category))]; }
+
+/* ===== 計算UIの描画 ===== */
+function heatColor(t){
+  const k = Math.min(Math.max(t,0),1400)/1400; // 0(冷)〜1(熱)
+  const c1=[138,107,82], c2=[255,110,31];
+  const mix=i=>Math.round(c1[i]+(c2[i]-c1[i])*k);
+  return `rgb(${mix(0)},${mix(1)},${mix(2)})`;
+}
+function renderTemp(){
+  $("tempVal").textContent = temp;
+  const col = heatColor(temp);
+  $("tempVal").style.color = col;
+  $("tempVal").style.textShadow = `0 0 ${8+temp/60}px ${col}66`;
+  const pct = Math.min(temp/1500*100, 100);
+  const fill = $("heatFill");
+  fill.style.width = pct + "%";
+  fill.style.background = `linear-gradient(90deg, ${heatColor(temp*0.5)}, ${col})`;
+}
+function renderGrid(){
+  const grid = $("grid");
+  if(!selected){
+    grid.style.gridTemplateColumns = "1fr";
+    grid.innerHTML = '<div class="placeholder">カテゴリと商材を選ぶと、マス目が表示されます。</div>';
+    $("actions").style.display = "none";
+    return;
+  }
+  const n = selected.cells.length;
+  const cols = n <= 3 ? 1 : 2; // 2,3→縦1列 / 4〜8→2列（5・7は右下が自動で空く）
+  grid.style.gridTemplateColumns = `repeat(${cols},1fr)`;
+  grid.innerHTML = selected.cells.map((c,i)=>{
+    const [min,max] = c;
+    const center = (min+max)/2;
+    const s = sums[i];
+    let st="under", badge=`<span class="badge under">あと ${min-s}</span>`;
+    if(s > max){ st="over"; badge=`<span class="badge over">${s-max} 超過</span>`; }
+    else if(s >= min){ st="in"; badge=`<span class="badge in">枠内</span>`; }
+    const centerLbl = Number.isInteger(center)?center:center.toFixed(1);
+    return `<div class="cell st-${st}">
+      <div class="cell-head">
+        <span class="cell-num">マス${i+1}</span>
+        <span class="cell-range">${min}–${max}<span class="cell-center">中央${centerLbl}</span></span>
+      </div>
+      <div class="cell-sum">${s}</div>
+      ${badge}
+      <div class="cell-dist">
+        <span>左端 <b>${fmt(min-s)}</b></span>
+        <span>中央 <b>${fmt(center-s)}</b></span>
+        <span>右端 <b>${fmt(max-s)}</b></span>
+      </div>
+      <input class="cell-input" type="number" inputmode="numeric" data-i="${i}" placeholder="今回の値">
+    </div>`;
+  }).join("");
+  // Enterで計算
+  grid.querySelectorAll(".cell-input").forEach(inp=>{
+    inp.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); applyHit(-50); }});
+  });
+  $("actions").style.display = "flex";
+}
+function candRows(T){
+  return TECHS.map(t=>`<div class="cand-row"><span class="cand-label">${t.label}</span><span class="cand-vals">${valsDisp(possibleValues(T,t.y))}</span></div>`).join("");
+}
+function renderCand(){
+  if(!selected){ $("candPanel").style.display="none"; return; }
+  $("candPanel").style.display="block";
+  $("candTemp").textContent = temp + "℃";
+  $("candMain").innerHTML = candRows(temp);
+  const t50 = clampTemp(temp-50), t100 = clampTemp(temp-100);
+  $("candSub").innerHTML =
+    `<div class="col"><h4>50℃下（${t50}℃）</h4>${candRows(t50)}</div>
+     <div class="col"><h4>100℃下（${t100}℃）</h4>${candRows(t100)}</div>`;
+}
+function render(){ renderTemp(); renderGrid(); renderCand(); }
+
+/* ===== 操作 ===== */
+function pushHistory(){
+  history.push({sums:sums.slice(), temp});
+  if(history.length>100) history.shift();
+}
+function applyHit(dTemp){
+  if(!selected) return;
+  pushHistory();
+  document.querySelectorAll(".cell-input").forEach(inp=>{
+    const v = parseFloat(inp.value);
+    if(!isNaN(v)) sums[inp.dataset.i] += v;
+  });
+  temp = clampTemp(temp + dTemp);
+  render();
+}
+function setTempManual(){
+  const v = parseFloat($("tempInput").value);
+  if(isNaN(v)) return;
+  pushHistory();
+  temp = clampTemp(v);
+  $("tempInput").value = "";
+  render();
+}
+function undo(){
+  if(!history.length) return;
+  const s = history.pop();
+  sums = s.sums.slice(); temp = s.temp;
+  render();
+}
+function resetPiece(){
+  if(!selected) return;
+  sums = new Array(selected.cells.length).fill(0);
+  temp = 1000; history = [];
+  render();
+}
+function selectProduct(prod){
+  selected = prod;
+  sums = new Array(prod.cells.length).fill(0);
+  temp = 1000; history = [];
+  render();
+}
+
+/* ===== セレクタ描画 ===== */
+function renderSelectors(){
+  const cats = categories();
+  const catSel = $("catSel");
+  const prevCat = catSel.value;
+  catSel.innerHTML = '<option value="">選択してください</option>' +
+    cats.map(c=>`<option${c===prevCat?" selected":""}>${escapeHtml(c)}</option>`).join("");
+  renderProductOptions();
+}
+function renderProductOptions(){
+  const cat = $("catSel").value;
+  const prodSel = $("prodSel");
+  const inCat = products.filter(p=>p.category===cat);
+  prodSel.innerHTML = '<option value="">選択してください</option>' +
+    inCat.map(p=>`<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join("");
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
+
+/* ===== データ管理UI ===== */
+function renderPairs(count, prefill){
+  const box = $("fPairs");
+  let html = "";
+  for(let i=0;i<count;i++){
+    const mn = prefill && prefill[i] ? prefill[i][0] : "";
+    const mx = prefill && prefill[i] ? prefill[i][1] : "";
+    html += `<div class="pair">枠${i+1}
+      <input type="number" class="pmin" placeholder="下限" value="${mn}">〜
+      <input type="number" class="pmax" placeholder="上限" value="${mx}"></div>`;
+  }
+  box.innerHTML = html;
+}
+function renderPlist(){
+  const list = $("plist");
+  if(!products.length){ list.innerHTML='<span class="hint">登録なし</span>'; return; }
+  list.innerHTML = products.map((p,i)=>`
+    <div class="pitem">
+      <span>${escapeHtml(p.name)} <span class="meta">／ ${escapeHtml(p.category)} ／ ${p.cells.length}マス</span></span>
+      <span class="ops">
+        <button data-edit="${i}">編集</button>
+        <button data-del="${i}">削除</button>
+      </span>
+    </div>`).join("");
+  list.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>startEdit(+b.dataset.edit));
+  list.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>delProduct(+b.dataset.del));
+}
+function renderJson(){ $("jsonArea").value = JSON.stringify(products.map(p=>({category:p.category,name:p.name,cells:p.cells})), null, 2); }
+function renderCatList(){ $("catList").innerHTML = categories().map(c=>`<option value="${escapeHtml(c)}">`).join(""); }
+function renderData(){ renderSelectors(); renderPlist(); renderJson(); renderCatList(); }
+
+function startEdit(i){
+  const p = products[i]; editIndex = i;
+  $("formTitle").textContent = "商材を編集";
+  $("fCat").value = p.category; $("fName").value = p.name;
+  $("fCount").value = p.cells.length;
+  renderPairs(p.cells.length, p.cells);
+  $("cancelEditBtn").style.display = "inline-block";
+  document.querySelector("details.data").open = true;
+  $("formMsg").textContent = "";
+}
+function cancelEdit(){
+  editIndex = -1;
+  $("formTitle").textContent = "商材を追加";
+  $("fCat").value=""; $("fName").value="";
+  $("fCount").value="5"; renderPairs(5);
+  $("cancelEditBtn").style.display = "none";
+  $("formMsg").textContent = "";
+}
+function saveProduct(){
+  const cat = $("fCat").value.trim();
+  const name = $("fName").value.trim();
+  const mins = [...document.querySelectorAll(".pmin")].map(e=>e.value.trim());
+  const maxs = [...document.querySelectorAll(".pmax")].map(e=>e.value.trim());
+  const msg = $("formMsg");
+  if(!cat || !name){ msg.className="msg err"; msg.textContent="カテゴリと商材名を入力してください。"; return; }
+  const cells = [];
+  for(let i=0;i<mins.length;i++){
+    const mn=Number(mins[i]), mx=Number(maxs[i]);
+    if(mins[i]===""||maxs[i]===""||isNaN(mn)||isNaN(mx)){ msg.className="msg err"; msg.textContent=`枠${i+1}の下限・上限を数値で入力してください。`; return; }
+    if(mn>mx){ msg.className="msg err"; msg.textContent=`枠${i+1}は下限が上限より大きくなっています。`; return; }
+    cells.push([mn,mx]);
+  }
+  const obj = {category:cat, name, cells};
+  if(editIndex>=0){ products[editIndex]=obj; } else { products.push(obj); }
+  const wasSelectedName = selected ? selected.name : null;
+  cancelEdit(); renderData();
+  // 選択中の商材を編集した場合は再読込
+  if(wasSelectedName){
+    const again = products.find(p=>p.name===wasSelectedName);
+    if(again){ selected = again; if(sums.length!==again.cells.length) sums=new Array(again.cells.length).fill(0); render(); }
+  }
+  msg.className="msg ok"; msg.textContent="保存しました。";
+  persist();
+}
+function delProduct(i){
+  const p = products[i];
+  if(selected && selected.name===p.name){ selected=null; sums=[]; render(); }
+  products.splice(i,1);
+  if(editIndex===i) cancelEdit();
+  renderData();
+  persist();
+}
+function applyJson(){
+  const msg=$("jsonMsg");
+  try{
+    const parsed = JSON.parse($("jsonArea").value);
+    if(!Array.isArray(parsed)) throw new Error("配列ではありません");
+    products = normalize(parsed);
+    selected=null; sums=[]; render(); renderData();
+    persist();
+    msg.className="msg ok"; msg.textContent=`反映しました（${products.length}件）。`;
+  }catch(e){ msg.className="msg err"; msg.textContent="JSONの読み取りに失敗しました： "+e.message; }
+}
+function importCsv(){
+  const msg=$("csvMsg");
+  const lines = $("csvArea").value.split(/\r?\n/).map(l=>l.trim()).filter(l=>l && !l.startsWith("#"));
+  let added=0, errs=[];
+  lines.forEach((line,idx)=>{
+    const parts = line.split(",").map(s=>s.trim());
+    if(parts.length < 4){ errs.push(idx+1); return; }
+    const cat=parts[0], name=parts[1];
+    const nums = parts.slice(2).map(Number);
+    if(nums.length%2!==0 || nums.some(isNaN)){ errs.push(idx+1); return; }
+    const cells=[];
+    for(let i=0;i<nums.length;i+=2) cells.push([nums[i],nums[i+1]]);
+    products.push({category:cat, name, cells}); added++;
+  });
+  renderData();
+  if(added){ msg.className="msg ok"; msg.textContent=`${added}件を追加しました。`+(errs.length?` （${errs.length}行スキップ）`:""); }
+  else{ msg.className="msg err"; msg.textContent="取り込めませんでした。形式を確認してください。"; }
+  if(added){ $("csvArea").value=""; persist(); }
+}
+
+/* ===== イベント ===== */
+$("catSel").addEventListener("change", ()=>{ renderProductOptions(); selected=null; sums=[]; render(); });
+$("prodSel").addEventListener("change", ()=>{
+  const cat=$("catSel").value, name=$("prodSel").value;
+  const p = products.find(p=>p.category===cat && p.name===name);
+  if(p) selectProduct(p); else { selected=null; sums=[]; render(); }
+});
+$("calcBtn").addEventListener("click", ()=>applyHit(-50));
+$("oroshiBtn").addEventListener("click", ()=>applyHit(-150));
+$("undoBtn").addEventListener("click", undo);
+$("resetBtn").addEventListener("click", resetPiece);
+$("setTempBtn").addEventListener("click", setTempManual);
+$("tempInput").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); setTempManual(); }});
+$("fCount").addEventListener("change", ()=>renderPairs(+$("fCount").value));
+$("saveBtn").addEventListener("click", saveProduct);
+$("cancelEditBtn").addEventListener("click", cancelEdit);
+$("jsonApplyBtn").addEventListener("click", applyJson);
+$("csvBtn").addEventListener("click", importCsv);
+
+/* ===== 起動 ===== */
+renderPairs(5);
+renderData();
+render();
+(async function init(){
+  try{
+    const stored = await loadStored();
+    if(Array.isArray(stored)){
+      products = normalize(stored);
+      selected = null; sums = [];
+      renderData(); render();
+    }
+  }catch(e){ /* 読み込みに失敗した場合はシードのまま */ }
+  const hint = $("storeHint");
+  hint.textContent =
+    storeMode === "artifact" ? "商材データは自動保存されます。JSON欄はバックアップ用です。" :
+    storeMode === "local"    ? "商材データはこのブラウザに自動保存されます。JSON欄はバックアップ用です。" :
+    "この環境では自動保存できません。JSON欄の内容をコピーして保管してください。";
+})();
+</script>
+</body>
+</html>
